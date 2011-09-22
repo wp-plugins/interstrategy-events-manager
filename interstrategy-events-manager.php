@@ -18,14 +18,19 @@ class BE_Events_Manager {
 	}
 
 	public function init() {
+		// Create Post Type
 		add_action( 'init', array( $this, 'post_type' ) );
 		add_filter( 'manage_edit-event_columns', array( $this, 'edit_event_columns' ) ) ;
 		add_action( 'manage_event_posts_custom_column', array( $this, 'manage_event_columns' ), 10, 2 );
 		add_filter( 'manage_edit-event_sortable_columns', array( $this, 'event_sortable_columns' ) );
 		add_action( 'load-edit.php', array( $this, 'edit_event_load' ) );
+		// Create Taxonomy
 		add_action( 'init', array( $this, 'taxonomies' ) );
+		// Create Metabox
 		add_filter( 'cmb_meta_boxes', array( $this, 'metaboxes' ) );
 		add_action( 'init', array( $this, 'initialize_meta_boxes' ), 9999 );
+		// Modify Event Listings query
+		add_action( 'pre_get_posts', array( $this, 'event_query' ) );
 	}
 	
 	/** 
@@ -198,27 +203,32 @@ class BE_Events_Manager {
 	 */
 	
 	function taxonomies() {
-		$labels = array(
-			'name' => 'Categories',
-			'singular_name' => 'Category',
-			'search_items' =>  'Search Categories',
-			'all_items' => 'All Categories',
-			'parent_item' => 'Parent Category',
-			'parent_item_colon' => 'Parent Category:',
-			'edit_item' => 'Edit Category',
-			'update_item' => 'Update Category',
-			'add_new_item' => 'Add New Category',
-			'new_item_name' => 'New Category Name',
-			'menu_name' => 'Category'
-		); 	
-	
-		register_taxonomy( 'event-category', array('event'), array(
-			'hierarchical' => true,
-			'labels' => $labels,
-			'show_ui' => true,
-			'query_var' => true,
-			'rewrite' => array( 'slug' => 'event-category' ),
-		));
+		$override = apply_filters( 'be_events_manager_taxonomy_override', false );
+		if( false === $override ) {
+		
+			$labels = array(
+				'name' => 'Categories',
+				'singular_name' => 'Category',
+				'search_items' =>  'Search Categories',
+				'all_items' => 'All Categories',
+				'parent_item' => 'Parent Category',
+				'parent_item_colon' => 'Parent Category:',
+				'edit_item' => 'Edit Category',
+				'update_item' => 'Update Category',
+				'add_new_item' => 'Add New Category',
+				'new_item_name' => 'New Category Name',
+				'menu_name' => 'Category'
+			); 	
+		
+			register_taxonomy( 'event-category', array('event'), array(
+				'hierarchical' => true,
+				'labels' => $labels,
+				'show_ui' => true,
+				'query_var' => true,
+				'rewrite' => array( 'slug' => 'event-category' ),
+			));
+		
+		}
 	}
 	
 	/**
@@ -230,7 +240,7 @@ class BE_Events_Manager {
 	function metaboxes( $meta_boxes ) {
 		
 		$prefix = 'be_events_manager_';
-		$meta_boxes[] = array(
+		$events_metabox = array(
 		    'id' => 'event-details',
 		    'title' => 'Event Details',
 		    'pages' => array('event'), 
@@ -272,6 +282,10 @@ class BE_Events_Manager {
 		
 		);
 		
+		// Use this to override the metabox and create your own
+		$override = apply_filters( 'be_events_manager_metabox_override', false );
+		if ( false === $override ) $meta_boxes[] = $events_metabox;
+		
 		return $meta_boxes;
 	}
 
@@ -279,6 +293,26 @@ class BE_Events_Manager {
 	    if (!class_exists('cmb_Meta_Box')) {
 	        require_once( 'lib/metabox/init.php' );
 	    }
+	}
+	
+	function event_query( $query ) {
+		global $wp_query;
+		// If you don't want the plugin to mess with the query, use this filter to override it
+		$override = apply_filters( 'be_events_manager_query_override', false );
+		if ( !is_admin() && $wp_query === $query && ( false === $override ) && ( is_post_type_archive( 'event' ) || is_tax( 'event-category' ) ) ) {
+			$meta_query = array(
+				array(
+					'key' => 'be_events_manager_end_date',
+					'value' => time(),
+					'compare' => '>'
+				)
+			);
+			$query->set( 'orderby', 'meta_value_num' );
+			$query->set( 'order', 'ASC' );
+			$query->set( 'meta_query', $meta_query );
+			$query->set( 'meta_key', 'be_events_manager_start_date' );
+		}
+		
 	}
 	
 }
